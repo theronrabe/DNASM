@@ -22,7 +22,7 @@ void main(int argc, char **argv) {
 	buildMap();
 	lives = malloc(sizeof(Organism));
 
-	//birth("c 0 1");
+	birth("< 0 0");
 	birth("(c 5 2) (< 0 2) (x 0 0) (+ 1 -3) (< 0 -4)");
 
 	while(lives->NEXT) { live(); ++I; }
@@ -61,6 +61,7 @@ void birth(char *DNASM) {
 		tok = strtok(NULL, " \t\n|()");
 	}
 
+	free(genes);
 	printf("Organism %p born at %d\n", ret, ret->isp);
 }
 
@@ -69,11 +70,13 @@ void live() {
 	Organism *i = lives;
 
 	while(o->NEXT) {
+		//printf("%d\n", I);
 		Cell *C = getCell(o->isp);
 		switch(C->op) {
 			case('<'):
 				//Jump to closer address
-				if(!C->acc) o->isp += C->dest;
+				if((!C->acc)&&(C->dest)) o->isp += C->dest;
+				else if((!C->dest)&&(C->acc)) o->isp += C->acc;
 				else o->isp += (abs(C->acc) < abs(C->dest))? C->acc:C->dest;
 				break;
 			case('+'):
@@ -94,14 +97,21 @@ void live() {
 				break;
 			case('x'):
 				//Kill organism
+				printf("Organism %p at %d dies on iteration %d\n", o, o->isp, I);
+				i = lives;
 				if(i == o) {
 					lives = i->NEXT; free(o);
+					o = lives;
+					i = lives;
 				} else {
-					while(i->NEXT) { if(i->NEXT == o) { i->NEXT = o->NEXT; free(o); } ++i; }
+					while(i->NEXT != o) {
+						i = i->NEXT;
+					}
+					i->NEXT = o->NEXT;
+					free(o);
+					o = i;
+					i = lives;
 				}
-				o = i;
-				i = lives;
-				printf("Organism %p at %d dies on iteration %d\n", o, o->isp, I);
 				break;
 			case('r'):
 				//Reproduce
@@ -135,6 +145,6 @@ void live() {
 				o->isp++;
 				break;
 		}
-		o = o->NEXT;
+		if(lives->NEXT) o = o->NEXT;
 	}
 }

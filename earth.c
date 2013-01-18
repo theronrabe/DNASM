@@ -2,11 +2,12 @@
 #include <time.h>
 
 #define GENOME 200
-#define CELLS 1200 
+#define CELLS 1200
+#define MINLIVES 10
 typedef struct Cell { char op; int acc; int dest; int col; } Cell;
 
 Object *organism, *camera;
-int imgOrganism, imgBlue, imgGreen;
+int imgOrganism, imgBlue, imgGreen, imgOrange;
 void drawOrganism(Instance *this);
 void drawCamera(Instance *this);
 void mouseCamera(Instance *this);
@@ -24,7 +25,7 @@ int I = 0;
 void startGame(int argc, char **argv) {
 	srand(time(NULL));
 	GAME.FRAMERATE = 100;
-	GAME.STEPTIME = 20;
+	GAME.STEPTIME = 50;
 	createWindow("DNASM", 50,50, 1200, 200);
 	organism = createObject();
 	camera = createObject();
@@ -32,6 +33,7 @@ void startGame(int argc, char **argv) {
 	imgOrganism= newImage("img/full.png");
 	imgBlue = newImage("img/blue.png");
 	imgGreen = newImage("img/green.png");
+	imgOrange = newImage("img/orange.png");
 	
 	organism->onDraw = drawOrganism;
 	organism->onStep = live;
@@ -48,14 +50,15 @@ void startGame(int argc, char **argv) {
 }
 
 void generateCell(Cell *C) {
-	char ops[] = "<+-c";
+	char ops[] = "<<+++---xdaco";
 	C->op = ops[rand()%strlen(ops)];
-	C->acc = (rand()%11)-6;
-	C->dest = (rand()%5)-3;
-	if(C->op == '/' && C->dest == 0) C->dest = 1;
-	if(C->op == 'r') C->acc = rand()%CELLS;
-	if(C->op == '<') C->dest = (rand()%21)-17;
-	if(C->op == 'c' && C->acc == 1 && !C->dest) C->op = 'x';
+	C->acc = (rand()%16)-8;
+	C->dest = (rand()%16)-8;
+	if(C->op == '<') {
+		int r = -(rand()%15)-1;
+		C->dest = r;
+		C->acc = 0;
+	}
 }
 	
 Cell *getCell(int loc) {
@@ -65,9 +68,11 @@ Cell *getCell(int loc) {
 
 void buildMap() {
 	int i;
-	for(i=0;i<CELLS;i++)
+	for(i=0;i<CELLS;i++) {
 		//Map[i].op = 'x';
 		generateCell(&Map[i]);
+		Map[i].col = 0;
+	}
 }
 
 void birth(char *DNASM) {
@@ -96,100 +101,138 @@ void birth(char *DNASM) {
 }
 
 void live(Instance *o) {
-	Cell *C = getCell(o->A);
-	//C->col = 1;
+	Cell *cc, *C = getCell(o->A);
+	Cell *ca = getCell(o->A + C->acc), *cd = getCell(o->A + C->dest);
+
+	C->col = 2;
+	//printf("o");
 	switch(C->op) {
 		case('<'):
+			//printf("<");
 			//Jump to closer address
 			if((!C->acc)&&(C->dest)) o->A += C->dest;
 			else if((!C->dest)&&(C->acc)) o->A += C->acc;
 			else o->A += (abs(C->acc) < abs(C->dest))? C->acc:C->dest;
 			break;
 		case('+'):
-			getCell(o->A + C->dest)->acc += C->acc;
+			//printf("+");
+			//cc = getCell(o->A + C->dest);
+			//cc->acc = (cc->acc+C->acc)%CELLS;
+			cd->dest = (cd->dest+C->acc)%CELLS;
+			cd->col = 1;
 			o->A++;
 			break;
 		case('-'):
-			getCell(o->A + C->dest)->acc -= C->acc;
+			//printf("-");
+			//cc = getCell(o->A + C->dest);
+			//cc->acc = (cc->acc-C->acc)%CELLS;
+			cd->dest = (cd->dest-C->acc)%CELLS;
+			cd->col = 1;
 			o->A++;
 			break;
 		case('*'):
-			getCell(o->A + C->dest)->acc *= C->acc;
+			//printf("*");
+			cc = getCell(o->A + C->dest);
+			cc->acc = (cc->acc*C->acc)%CELLS;
 			o->A++;
 			break;
 		case('/'):
-			getCell(o->A + C->dest)->acc /= C->acc;
+			//printf("/");
+			if(C->acc) {
+				cc = getCell(o->A + C->dest);
+				cc->acc = (cc->acc/C->acc)%CELLS;
+			}
 			o->A++;
 			break;
 		case('x'):
 			//Kill organism
-			//printf("Organism %p at %d dies on iteration %d\n", o, o->A, I);
+			//printf("X");
 			destroyInstance(o);
 			break;
 		case('r'):
 			//Reproduce
-			/*
-			i = malloc(sizeof(Organism));
-			i->isp = C->acc;
-			i->NEXT = lives;
-			lives = i;
-			o->isp++;
-			*/
 			createInstance(organism,0, 0,0,0, 0,0)->A = o->A + C->acc;
 			//generateCell(C);
 			C->op = 'x';
 			break;
 		case('c'):
+			//printf("c");
 			//Cell duplication
-			getCell(o->A + C->acc)->op = getCell(o->A + C->dest)->op;
-			getCell(o->A + C->acc)->acc = getCell(o->A + C->dest)->acc;
-			getCell(o->A + C->acc)->dest = getCell(o->A + C->dest)->dest;
-			getCell(o->A + C->acc)->col = !(getCell(o->A + C->acc)->col);
-			//printf("Cell (%c %d %d) duplicated\n", getCell(o->isp + C->acc)->op, getCell(o->isp + C->acc)->acc, getCell(o->isp + C->acc)->dest);
+			if(C->acc == 1 && !C->dest) { destroyInstance(o); break; }
+
+			ca->op = cd->op;
+			ca->acc = cd->acc;
+			ca->dest = cd->dest;
+			ca->col = 2;
+			cd->col = 1;
 			o->A++;
 			break;
 		case('d'):
+			//printf("d");
 			//MOV dest
-			getCell(o->A + C->dest)->dest = C->acc;
-			getCell(o->A + C->acc)->col = !(getCell(o->A + C->acc)->col);
+			cd->dest = C->acc;
+			cd->col = 1;
 			o->A++;
 			break;
 		case('o'):
-			//MOV op
-			getCell(o->A + C->dest)->op = C->acc;
-			getCell(o->A + C->acc)->col = !(getCell(o->A + C->acc)->col);
+			//printf("o");
+			//MOV occp
+			cd->op = ca->op;
+			ca->col = 2;
+			cd->col = 1;
 			o->A++;
 			break;
 		case('a'):
+			//printf("a");
 			//MOV acc
-			getCell(o->A + C->dest)->acc = C->acc;
-			getCell(o->A + C->acc)->col = !(getCell(o->A + C->acc)->col);
+			cd->acc = C->acc;
+			cd->col = 1;
 			o->A++;
 			break;
 	}
+	//printf("|");
 	++I;
 }
 
 void drawOrganism(Instance *this) {
-	drawImage(imgOrganism, this->A%1200, 120, 2, 8, 0);
+	drawImage(imgOrganism, this->A%CELLS, 120, 2, 8, 0);
 	//if(countInstances(organism)>100) destroyInstance(this);
 }
 
 void drawCamera(Instance *this) {
-	glClearColor(0, 0, 0, 1);
+	glClearColor(0.1, 0.1, 0.1, 1);
 	seeWorld2D(0,0,1200,200);
 
 	int i;
-	for(i=0;i<CELLS;i++) {
+	for(i=0;i<CELLS;i+=3) {
 		Cell *C = getCell(i);
+		switch(C->col) {
+			case(0):
+				drawImage(imgGreen, i, 100, 1,6,0);
+				break;
+			case(1):
+				drawImage(imgBlue, i, 100, 1,6,0);
+				break;
+			case(2):
+				drawImage(imgOrange, i, 100, 1,6,0);
+				break;
+		}
 		drawImage((C->col)?imgBlue:imgGreen, i, 100, 1,6,0);
-	};
+		}
 
-	//if(countInstances(organism) < 2) endGame();
-	//if(!(I%2)) createInstance(organism,0, 0,0,0, 0,0)->A = rand()%CELLS;
+	//if(countInstances(organism) < 10) endGame();
+	if(countInstances(organism) < MINLIVES) {
+		createInstance(organism,0, 0,0,0, 0,0)->A = rand()%CELLS;
+		printf("Birth on %d\n", I);
+	}
 
 	if(keyIsHeld('q')) endGame();
-	if(keyIsHeld('x')) { wipeInstances(organism); } //GAME.instCount = 3; }
+	if(keyIsHeld('x')) { wipeInstances(organism); buildMap(); } //GAME.instCount = 3; }
+	if(keyIsHeld('c')) {
+		int i;
+		for(i=0;i<CELLS;i++) Map[i].col = 0;
+	}
+	//printf("\n");
 }
 
 void mouseCamera(Instance *this) {
